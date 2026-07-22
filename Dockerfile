@@ -1,7 +1,7 @@
 # Multi-stage: Go backend + Vite React UI + Python agent gateway
 
 # --- Stage 1: Go backend ---
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.22-alpine AS go-builder
 WORKDIR /build
 COPY backend/go.mod backend/go.sum* ./
 RUN go mod download 2>/dev/null || true

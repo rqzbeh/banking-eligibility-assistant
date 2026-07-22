@@ -1,3 +1,3 @@
 module github.com/banking-assistant/backend
 
-go 1.24
+go 1.22

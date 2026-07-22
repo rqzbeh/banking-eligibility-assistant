@@ -26,7 +26,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 
-_client = httpx.Client(base_url=BACKEND_URL, timeout=10)
+_client = httpx.Client(base_url=BACKEND_URL, timeout=10, trust_env=False)
 
 
 def _safe_call(fn, *args, **kwargs) -> dict:

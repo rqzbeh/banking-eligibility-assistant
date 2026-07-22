@@ -50,7 +50,7 @@ def get_agent():
 def get_http() -> httpx.AsyncClient:
     global _http
     if _http is None:
-        _http = httpx.AsyncClient(base_url=BACKEND_URL, timeout=30.0)
+        _http = httpx.AsyncClient(base_url=BACKEND_URL, timeout=30.0, trust_env=False)
     return _http
 
 

@@ -73,6 +73,7 @@ func BuildProfile(id *models.IdentityProfile, fin *models.FinancialProfile, risk
 
 // BuildProfileFromColdStart creates a profile from self-declared data
 func BuildProfileFromColdStart(req models.ColdStartRequest, risk *models.RiskAssessment) CustomerProfile {
+	req.Occupation = NormalizeOccupation(req.Occupation)
 	p := CustomerProfile{
 		Fields:       make(map[string]interface{}),
 		Risk:         risk,
@@ -154,7 +155,7 @@ func EvaluateCondition(cond models.RuleCondition, profile CustomerProfile) (bool
 
 	switch cond.Operator {
 	case "eq":
-		ok := fmt.Sprintf("%v", val) == fmt.Sprintf("%v", cond.Value)
+		ok := valueEqual(val, cond.Value)
 		if !ok {
 			return false,
 				fmt.Sprintf("%s must be %v (current: %v)", cond.Field, cond.Value, val),
@@ -163,7 +164,7 @@ func EvaluateCondition(cond models.RuleCondition, profile CustomerProfile) (bool
 		return true, "", ""
 
 	case "neq":
-		ok := fmt.Sprintf("%v", val) != fmt.Sprintf("%v", cond.Value)
+		ok := !valueEqual(val, cond.Value)
 		if !ok {
 			return false,
 				fmt.Sprintf("%s must not be %v", cond.Field, cond.Value),
@@ -172,8 +173,12 @@ func EvaluateCondition(cond models.RuleCondition, profile CustomerProfile) (bool
 		return true, "", ""
 
 	case "gt", "gte", "lt", "lte":
-		numVal := toFloat(val)
-		numCond := toFloat(cond.Value)
+		numVal, valOK := numericValue(val)
+		numCond, condOK := numericValue(cond.Value)
+		if !valOK || !condOK {
+			reason := fmt.Sprintf("شرط عددی %s مقدار نامعتبر دارد", fieldNameFa(cond.Field))
+			return false, fmt.Sprintf("%s numeric comparison has invalid value", cond.Field), reason
+		}
 		var ok bool
 		switch cond.Operator {
 		case "gt":
@@ -198,11 +203,8 @@ func EvaluateCondition(cond models.RuleCondition, profile CustomerProfile) (bool
 		if !ok {
 			return false, "Invalid 'in' value", "مقدار نامعتبر"
 		}
-		strVal := fmt.Sprintf("%v", val)
-		for _, item := range list {
-			if fmt.Sprintf("%v", item) == strVal {
-				return true, "", ""
-			}
+		if listContains(list, val) {
+			return true, "", ""
 		}
 		return false,
 			fmt.Sprintf("%s must be one of %v (current: %v)", cond.Field, list, val),
@@ -213,13 +215,10 @@ func EvaluateCondition(cond models.RuleCondition, profile CustomerProfile) (bool
 		if !ok {
 			return false, "Invalid 'not_in' value", "مقدار نامعتبر"
 		}
-		strVal := fmt.Sprintf("%v", val)
-		for _, item := range list {
-			if fmt.Sprintf("%v", item) == strVal {
-				return false,
-					fmt.Sprintf("%s must not be one of %v (current: %v)", cond.Field, list, val),
-					fmt.Sprintf("%s نباید یکی از %v باشد (فعلی: %v)", fieldNameFa(cond.Field), list, val)
-			}
+		if listContains(list, val) {
+			return false,
+				fmt.Sprintf("%s must not be one of %v (current: %v)", cond.Field, list, val),
+				fmt.Sprintf("%s نباید یکی از %v باشد (فعلی: %v)", fieldNameFa(cond.Field), list, val)
 		}
 		return true, "", ""
 	}
@@ -611,6 +610,7 @@ func GenerateDefaultWarning(currentRisk string) *models.DefaultWarning {
 
 // ColdStartRisk assesses risk for non-customers based on self-declared info
 func ColdStartRisk(req models.ColdStartRequest) models.RiskAssessment {
+	req.Occupation = NormalizeOccupation(req.Occupation)
 	score := 50.0 // start at medium
 
 	// Age adjustments
@@ -666,10 +666,10 @@ func ColdStartRisk(req models.ColdStartRequest) models.RiskAssessment {
 	}
 
 	return models.RiskAssessment{
-		CustomerID: "NEW",
-		RiskLevel:  level,
-		RiskScore:  score,
-		Reason:     reason,
+		CustomerID:  "NEW",
+		RiskLevel:   level,
+		RiskScore:   score,
+		Reason:      reason,
 		IsColdStart: true,
 	}
 }
@@ -677,18 +677,43 @@ func ColdStartRisk(req models.ColdStartRequest) models.RiskAssessment {
 // --- helpers ---
 
 func toFloat(v interface{}) float64 {
+	n, _ := numericValue(v)
+	return n
+}
+
+func numericValue(v interface{}) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
-		return n
+		return n, true
 	case float32:
-		return float64(n)
+		return float64(n), true
 	case int:
-		return float64(n)
+		return float64(n), true
 	case int64:
-		return float64(n)
+		return float64(n), true
+	case int32:
+		return float64(n), true
 	default:
-		return 0
+		return 0, false
 	}
+}
+
+func valueEqual(a, b interface{}) bool {
+	if af, ok := numericValue(a); ok {
+		if bf, ok := numericValue(b); ok {
+			return af == bf
+		}
+	}
+	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+}
+
+func listContains(list []interface{}, val interface{}) bool {
+	for _, item := range list {
+		if valueEqual(item, val) {
+			return true
+		}
+	}
+	return false
 }
 
 func calculateScore(product models.Product, profile CustomerProfile) float64 {

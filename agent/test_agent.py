@@ -6,45 +6,12 @@ Start backend first: cd backend && go run ./cmd/server
 import json
 import os
 import sys
-import subprocess
-import time
-import signal
-import pytest
 import httpx
 
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
-
-
-@pytest.fixture(scope="session", autouse=True)
-def backend_server():
-    """Start Go backend for tests, stop after."""
-    backend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend")
-    proc = subprocess.Popen(
-        ["go", "run", "./cmd/server"],
-        cwd=backend_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid,
-    )
-    # Wait for server to be ready
-    for _ in range(30):
-        try:
-            r = httpx.get(f"{BACKEND_URL}/api/health", timeout=1)
-            if r.status_code == 200:
-                break
-        except Exception:
-            time.sleep(0.5)
-    else:
-        proc.kill()
-        raise RuntimeError("Backend failed to start")
-
-    yield proc
-
-    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-    proc.wait(timeout=5)
 
 
 class TestIdentityTool:

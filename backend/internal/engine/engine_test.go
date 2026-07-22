@@ -103,6 +103,36 @@ func TestEvaluateCondition_NotIn(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_NumericEqUsesValueNotStringShape(t *testing.T) {
+	profile := CustomerProfile{Fields: map[string]interface{}{"installment_default": int(0)}}
+	ok, reason, _ := EvaluateCondition(models.RuleCondition{
+		Field: "installment_default", Operator: "eq", Value: float64(0),
+	}, profile)
+	if !ok {
+		t.Fatalf("expected int(0) to equal float64(0), got %q", reason)
+	}
+
+	ok, _, _ = EvaluateCondition(models.RuleCondition{
+		Field: "installment_default", Operator: "in", Value: []interface{}{float64(0), float64(1)},
+	}, profile)
+	if !ok {
+		t.Fatal("expected numeric in-list comparison to ignore concrete numeric type")
+	}
+}
+
+func TestEvaluateCondition_NumericComparisonRejectsNonNumericValues(t *testing.T) {
+	profile := CustomerProfile{Fields: map[string]interface{}{"age": "unknown"}}
+	ok, reason, _ := EvaluateCondition(models.RuleCondition{
+		Field: "age", Operator: "lt", Value: float64(18),
+	}, profile)
+	if ok {
+		t.Fatal("expected non-numeric age to fail numeric comparison")
+	}
+	if !strings.Contains(reason, "numeric comparison") {
+		t.Fatalf("expected numeric comparison error, got %q", reason)
+	}
+}
+
 func TestEvaluateCondition_MissingField(t *testing.T) {
 	profile := CustomerProfile{Fields: map[string]interface{}{}}
 	ok, reason, _ := EvaluateCondition(models.RuleCondition{Field: "age", Operator: "gte", Value: float64(18)}, profile)
@@ -362,6 +392,15 @@ func TestColdStartRisk_Ranges(t *testing.T) {
 		if !risk.IsColdStart {
 			t.Errorf("%s: expected cold-start flag", tt.name)
 		}
+	}
+}
+
+func TestColdStartRisk_NormalizesPersianOccupation(t *testing.T) {
+	risk := ColdStartRisk(models.ColdStartRequest{
+		Age: 40, Occupation: "مدیر", EmploymentType: "government", ApproxIncome: 80_000_000,
+	})
+	if risk.RiskLevel != "low" {
+		t.Fatalf("expected Persian manager occupation to normalize to low risk, got %s (score %.0f)", risk.RiskLevel, risk.RiskScore)
 	}
 }
 
