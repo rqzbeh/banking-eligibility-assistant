@@ -1,6 +1,6 @@
 // Package handlers — لایه HTTP بک‌اند دستیار بانکی
 //
-// هر handler یک Mock API یا موتور تطبیق را در دسترس قرار می‌دهد.
+// هر handler یک سرویس محلی RBCI یا موتور تطبیق را در دسترس قرار می‌دهد.
 // خطاها همیشه با فیلدهای error (انگلیسی) و error_fa (فارسی) برگردانده می‌شوند.
 package handlers
 
@@ -32,7 +32,11 @@ func IdentityHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid national_id", msg)
 		return
 	}
-	profile, ok := data.Identities[nid]
+	profile, ok, err := data.GetIdentity(r.Context(), nid)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !ok {
 		// PDF: تشخیص مشتری غیرموجود → مسیر مکالمه‌ای
 		writeError(w, 404, "Customer not found", "مشتری یافت نشد — مشتری غیرموجود است")
@@ -49,7 +53,11 @@ func FinancialHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "customer_id is required", "شناسه مشتری الزامی است")
 		return
 	}
-	profile, ok := data.Financials[cid]
+	profile, ok, err := data.GetFinancial(r.Context(), cid)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !ok {
 		writeError(w, 404, "Financial profile not found", "پروفایل مالی یافت نشد — سامانه مالی داده برنگرداند")
 		return
@@ -65,7 +73,11 @@ func RBCIHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "customer_id is required", "شناسه مشتری الزامی است")
 		return
 	}
-	risk, ok := data.Risks[cid]
+	risk, ok, err := data.GetRisk(r.Context(), cid)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !ok {
 		writeError(w, 404, "Risk assessment not found", "ارزیابی ریسک یافت نشد — سامانه RBCI داده برنگرداند")
 		return
@@ -133,7 +145,11 @@ func MatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, idOk := data.Identities[req.NationalID]
+	identity, idOk, err := data.GetIdentity(r.Context(), req.NationalID)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !idOk {
 		writeError(w, 404, "Customer not found — use /api/match/cold-start for non-customers",
 			"مشتری یافت نشد — برای افراد غیرمشتری از مسیر cold-start استفاده کنید")
@@ -142,11 +158,19 @@ func MatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// مدیریت خطای سامانه‌های بالادستی (الزام PDF)
 	var upstreamErrs []string
-	financial, finOk := data.Financials[identity.CustomerID]
+	financial, finOk, err := data.GetFinancial(r.Context(), identity.CustomerID)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !finOk {
 		upstreamErrs = append(upstreamErrs, "سرویس اطلاعات مالی در دسترس نیست")
 	}
-	risk, riskOk := data.Risks[identity.CustomerID]
+	risk, riskOk, err := data.GetRisk(r.Context(), identity.CustomerID)
+	if err != nil {
+		writeError(w, 500, "database error", "خطا در پایگاه داده")
+		return
+	}
 	if !riskOk {
 		upstreamErrs = append(upstreamErrs, "سامانه RBCI در دسترس نیست")
 	}
@@ -233,7 +257,106 @@ func MatchColdStartHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/health
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]string{"status": "ok", "service": "banking-assistant-backend"})
+	writeJSON(w, 200, map[string]string{"status": "ok", "service": "banking-assistant-backend", "customer_store": data.CustomerStoreName()})
+}
+
+// CustomersHandler exposes the configured local RBCI endpoint.
+func CustomersHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		customers, err := data.ListCustomers(r.Context())
+		if err != nil {
+			writeError(w, 500, "database error", "خطا در پایگاه داده")
+			return
+		}
+		writeJSON(w, 200, customers)
+	case http.MethodPost:
+		var rec models.CustomerRecord
+		if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
+			writeError(w, 400, "Invalid request", "درخواست نامعتبر")
+			return
+		}
+		if errFa := validateCustomerRecord(&rec); errFa != "" {
+			writeError(w, 400, "validation failed", errFa)
+			return
+		}
+		if err := data.CreateCustomer(r.Context(), rec); err != nil {
+			if strings.Contains(err.Error(), "customer_id already exists") {
+				writeError(w, 409, "customer_id already exists", "شناسه مشتری قبلاً ثبت شده است")
+				return
+			}
+			if strings.Contains(err.Error(), "already exists") {
+				writeError(w, 409, "customer already exists", "مشتری با این کد ملی قبلاً ثبت شده است")
+				return
+			}
+			writeError(w, 500, "database error", "خطا در ذخیره مشتری")
+			return
+		}
+		writeJSON(w, 201, rec)
+	default:
+		writeError(w, 405, "method not allowed", "متد مجاز نیست")
+	}
+}
+
+func CustomerHandler(w http.ResponseWriter, r *http.Request) {
+	nid := strings.TrimSpace(r.PathValue("national_id"))
+	if ok, msg := engine.ValidateNationalID(nid); !ok {
+		writeError(w, 400, "invalid national_id", msg)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		rec, ok, err := data.GetCustomer(r.Context(), nid)
+		if err != nil {
+			writeError(w, 500, "database error", "خطا در پایگاه داده")
+			return
+		}
+		if !ok {
+			writeError(w, 404, "Customer not found", "مشتری یافت نشد")
+			return
+		}
+		writeJSON(w, 200, rec)
+	case http.MethodPut:
+		var rec models.CustomerRecord
+		if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
+			writeError(w, 400, "Invalid request", "درخواست نامعتبر")
+			return
+		}
+		rec.Identity.NationalID = strings.TrimSpace(rec.Identity.NationalID)
+		if rec.Identity.NationalID == "" {
+			rec.Identity.NationalID = nid
+		}
+		if errFa := validateCustomerRecord(&rec); errFa != "" {
+			writeError(w, 400, "validation failed", errFa)
+			return
+		}
+		if err := data.UpdateCustomer(r.Context(), nid, rec); err != nil {
+			if strings.Contains(err.Error(), "mismatch") {
+				writeError(w, 400, "identity mismatch", "کد ملی یا شناسه مشتری با رکورد موجود یکسان نیست")
+				return
+			}
+			if strings.Contains(err.Error(), "not found") {
+				writeError(w, 404, "Customer not found", "مشتری یافت نشد")
+				return
+			}
+			writeError(w, 500, "database error", "خطا در ذخیره مشتری")
+			return
+		}
+		writeJSON(w, 200, rec)
+	case http.MethodDelete:
+		ok, err := data.DeleteCustomer(r.Context(), nid)
+		if err != nil {
+			writeError(w, 500, "database error", "خطا در حذف مشتری")
+			return
+		}
+		if !ok {
+			writeError(w, 404, "Customer not found", "مشتری یافت نشد")
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "deleted"})
+	default:
+		writeError(w, 405, "method not allowed", "متد مجاز نیست")
+	}
 }
 
 // --- validation helpers ---
@@ -254,5 +377,43 @@ func validateColdStart(req models.ColdStartRequest) string {
 	if req.ApproxIncome < 0 {
 		return "درآمد نمی‌تواند منفی باشد"
 	}
+	return ""
+}
+
+func validateCustomerRecord(rec *models.CustomerRecord) string {
+	rec.Identity.NationalID = strings.TrimSpace(rec.Identity.NationalID)
+	rec.Identity.CustomerID = strings.TrimSpace(rec.Identity.CustomerID)
+	rec.Identity.Name = strings.TrimSpace(rec.Identity.Name)
+	rec.Identity.Occupation = engine.NormalizeOccupation(rec.Identity.Occupation)
+	if ok, msg := engine.ValidateNationalID(rec.Identity.NationalID); !ok {
+		return msg
+	}
+	if rec.Identity.CustomerID == "" {
+		return "شناسه مشتری الزامی است"
+	}
+	if rec.Identity.Name == "" {
+		return "نام الزامی است"
+	}
+	if rec.Identity.Age < 15 || rec.Identity.Age > 100 {
+		return "سن باید بین ۱۵ تا ۱۰۰ باشد"
+	}
+	if rec.Identity.Gender != "" && rec.Identity.Gender != "male" && rec.Identity.Gender != "female" {
+		return "جنسیت باید male یا female باشد"
+	}
+	if rec.Risk.RiskLevel != "low" && rec.Risk.RiskLevel != "medium" && rec.Risk.RiskLevel != "high" {
+		return "سطح ریسک باید low، medium یا high باشد"
+	}
+	if rec.Risk.RiskScore < 0 || rec.Risk.RiskScore > 100 {
+		return "امتیاز ریسک باید بین ۰ تا ۱۰۰ باشد"
+	}
+	if rec.Financial.MonthlyIncome < 0 || rec.Financial.AccountTurnover3M < 0 ||
+		rec.Financial.AccountTurnover12M < 0 || rec.Financial.TotalDeposits < 0 ||
+		rec.Financial.ActiveLoans < 0 || rec.Financial.TotalLoanAmount < 0 ||
+		rec.Financial.InstallmentDefault < 0 {
+		return "مقادیر مالی نمی‌توانند منفی باشند"
+	}
+	rec.Identity.IsExisting = true
+	rec.Financial.CustomerID = rec.Identity.CustomerID
+	rec.Risk.CustomerID = rec.Identity.CustomerID
 	return ""
 }

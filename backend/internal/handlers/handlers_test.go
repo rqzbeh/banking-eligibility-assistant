@@ -138,7 +138,7 @@ func TestColdStartHandler_PersianOccupation(t *testing.T) {
 
 func TestColdStartHandler_BadRequest(t *testing.T) {
 	cases := []map[string]interface{}{
-		{"name": "test"},                         // missing age/occupation
+		{"name": "test"}, // missing age/occupation
 		{"name": "t", "age": 10, "occupation": "employee"}, // age too low
 		{"name": "t", "age": 30, "occupation": "employee", "gender": "other"},
 		{"name": "t", "age": 30, "occupation": "employee", "approx_income": -1},
@@ -264,5 +264,125 @@ func TestMatchColdStartHandler(t *testing.T) {
 		if len(p.ConditionsFa) == 0 {
 			t.Errorf("product %s missing conditions_fa", p.ProductID)
 		}
+	}
+}
+
+func TestCustomerCRUDHandlers(t *testing.T) {
+	rec := models.CustomerRecord{
+		Identity: models.IdentityProfile{
+			CustomerID: "CTEST", NationalID: "1234567890", Name: "تست مشتری",
+			Age: 34, Gender: "male", Occupation: "employee", EmploymentType: "private",
+			CustomerType: "real", AccountOpenDate: "1404/01/01", IsExisting: true,
+		},
+		Financial: models.FinancialProfile{
+			CustomerID: "CTEST", MonthlyIncome: 40_000_000, AccountTurnover3M: 150_000_000,
+			AccountTurnover12M: 600_000_000, PaymentHistory: "good",
+		},
+		Risk: models.RiskAssessment{
+			CustomerID: "CTEST", RiskLevel: "low", RiskScore: 20, Reason: "RBCI test input",
+		},
+	}
+	body, _ := json.Marshal(rec)
+	req := httptest.NewRequest("POST", "/api/customers", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	CustomersHandler(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create customer: expected 201, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("GET", "/api/customers/1234567890", nil)
+	req.SetPathValue("national_id", "1234567890")
+	w = httptest.NewRecorder()
+	CustomerHandler(w, req)
+	if w.Code != 200 {
+		t.Fatalf("get customer: expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var got models.CustomerRecord
+	json.NewDecoder(w.Body).Decode(&got)
+	if got.Risk.Reason != "RBCI test input" {
+		t.Fatalf("expected RBCI risk reason persisted, got %q", got.Risk.Reason)
+	}
+
+	rec.Financial.MonthlyIncome = 55_000_000
+	body, _ = json.Marshal(rec)
+	req = httptest.NewRequest("PUT", "/api/customers/1234567890", bytes.NewReader(body))
+	req.SetPathValue("national_id", "1234567890")
+	w = httptest.NewRecorder()
+	CustomerHandler(w, req)
+	if w.Code != 200 {
+		t.Fatalf("update customer: expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("DELETE", "/api/customers/1234567890", nil)
+	req.SetPathValue("national_id", "1234567890")
+	w = httptest.NewRecorder()
+	CustomerHandler(w, req)
+	if w.Code != 200 {
+		t.Fatalf("delete customer: expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestCustomerCreateDuplicateCustomerID(t *testing.T) {
+	rec := models.CustomerRecord{
+		Identity: models.IdentityProfile{
+			CustomerID: "C001", NationalID: "2234567890", Name: "شناسه تکراری",
+			Age: 34, Gender: "male", Occupation: "employee", CustomerType: "real",
+		},
+		Financial: models.FinancialProfile{MonthlyIncome: 10_000_000},
+		Risk:      models.RiskAssessment{RiskLevel: "low", RiskScore: 10},
+	}
+	body, _ := json.Marshal(rec)
+	req := httptest.NewRequest("POST", "/api/customers", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	CustomersHandler(w, req)
+
+	if w.Code != 409 {
+		t.Fatalf("expected duplicate customer_id 409, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestCustomerRejectsNegativeActiveLoans(t *testing.T) {
+	rec := models.CustomerRecord{
+		Identity: models.IdentityProfile{
+			CustomerID: "CNEG", NationalID: "3234567890", Name: "وام منفی",
+			Age: 34, Gender: "male", Occupation: "employee", CustomerType: "real",
+		},
+		Financial: models.FinancialProfile{MonthlyIncome: 10_000_000, ActiveLoans: -1},
+		Risk:      models.RiskAssessment{RiskLevel: "low", RiskScore: 10},
+	}
+	body, _ := json.Marshal(rec)
+	req := httptest.NewRequest("POST", "/api/customers", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	CustomersHandler(w, req)
+
+	if w.Code != 400 {
+		t.Fatalf("expected negative active_loans 400, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestLocalRBCICustomerAlias(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/rbci/customers", nil)
+	w := httptest.NewRecorder()
+	CustomersHandler(w, req)
+	if w.Code != 200 {
+		t.Fatalf("expected local RBCI customers endpoint to return 200, got %d", w.Code)
+	}
+}
+
+func TestHealthReportsLocalRBCI(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	w := httptest.NewRecorder()
+	HealthHandler(w, req)
+	if w.Code != 200 {
+		t.Fatalf("expected health 200, got %d", w.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["customer_store"] != "local-rbci" {
+		t.Fatalf("expected local-rbci, got %q", body["customer_store"])
 	}
 }

@@ -50,6 +50,47 @@ export type MatchResponse = {
   upstream_errors?: string[]
 }
 
+export type IdentityProfile = {
+  customer_id: string
+  national_id: string
+  name: string
+  age: number
+  gender: string
+  occupation: string
+  employment_type: string
+  customer_type: string
+  account_open_date: string
+  is_existing: boolean
+}
+
+export type FinancialProfile = {
+  customer_id: string
+  monthly_income: number
+  account_turnover_3m: number
+  account_turnover_12m: number
+  total_deposits: number
+  active_loans: number
+  total_loan_amount: number
+  installment_default: number
+  spending_pattern: string
+  payment_history: string
+  has_guarantor: boolean
+}
+
+export type RiskAssessment = {
+  customer_id: string
+  risk_level: string
+  risk_score: number
+  reason: string
+  is_cold_start: boolean
+}
+
+export type CustomerRecord = {
+  identity: IdentityProfile
+  financial: FinancialProfile
+  risk: RiskAssessment
+}
+
 export type ApiError = {
   error?: string
   error_fa?: string

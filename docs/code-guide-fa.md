@@ -1,3 +1,5 @@
+<div dir="rtl" align="right">
+
 # راهنمای کد — دستیار هوشمند اهلیت بانکی
 
 این سند ساختار کد را برای داوران و توسعه‌دهندگان توضیح می‌دهد.
@@ -7,7 +9,7 @@
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ React SPA       │────▶│ Python Agent     │────▶│ Go Backend :8080│
-│  (web/)         │     │ (agent/agent.py) │     │ Mock APIs+Engine│
+│  (web/)         │     │ (agent/agent.py) │     │ RBCI+Engine     │
 └─────────────────┘     └────────┬─────────┘     └────────▲────────┘
                                  │ Chat Completions       │
                                  ▼                        │
@@ -15,6 +17,9 @@
                         (OPENAI_BASE_URL)                 │
                                                           │
         UI «بررسی سریع» ──────────────────────────────────┘
+                                                          │
+                                                   PostgreSQL
+                                                   local RBCI
 ```
 
 - **منطق اهلیت قطعی است** (Go engine) — LLM فقط مکالمه و توضیح می‌کند.
@@ -26,7 +31,7 @@
 |------|-----|
 | `backend/cmd/server/main.go` | نقطه ورود HTTP، ثبت مسیرها، CORS |
 | `backend/internal/models/` | قرارداد JSON ورودی/خروجی |
-| `backend/internal/data/` | داده‌های Mock (مشتری، محصول، بخشنامه) |
+| `backend/internal/data/` | store محلی RBCI، seedهای اولیه، محصول و بخشنامه |
 | `backend/internal/engine/` | موتور اهلیت، gap، افر، cold-start |
 | `backend/internal/handlers/` | لایه HTTP و اعتبارسنجی |
 | `agent/agent.py` | ایجنت LangChain با tools به بک‌اند |
@@ -39,7 +44,7 @@
 ### مشتری موجود — `POST /api/match`
 
 1. `ValidateNationalID` — کد ملی ۱۰ رقمی
-2. خواندن Identity / Financial / RBCI (در صورت نبود → `503` + `upstream_errors`)
+2. خواندن Identity / Financial / RBCI از store محلی RBCI (در صورت نبود → `503` + `upstream_errors`)
 3. `BuildProfile` — تخت‌سازی فیلدها برای ارزیابی شرط
 4. `MatchAllProducts` — برای هر محصول:
    - همه شروط بخشنامه `EvaluateCondition`
@@ -68,7 +73,7 @@
 
 فیلد گم‌شده → شرط fail + reason فارسی.
 
-## سناریوهای PDF و داده Mock
+## سناریوهای PDF و seed محلی RBCI
 
 | کد ملی | مشتری | انتظار کلیدی |
 |--------|--------|---------------|
@@ -76,6 +81,17 @@
 | `0023456789` | مدیر پردرآمد | دسته‌چک/وام مجاز + obligations + credit_limit |
 | `0034567890` | کارمند با معوقه | دسته‌چک غیرمجاز + advice؛ کارت اعتباری مجاز |
 | — | cold-start | افر مشروط + notes_fa |
+
+در Docker، seedها فقط برای volume خالی وارد PostgreSQL می‌شوند. پس از آن ویرایش/حذف از UI یا `/api/rbci/customers` پایدار است و موتور تطبیق همان رکوردهای PostgreSQL را مصرف می‌کند.
+
+## تعویض adapter محلی با RBCI آنلاین
+
+مرز اتصال فقط `backend/internal/data` است. برای RBCI آنلاین، همین توابع را حفظ کنید و داخلشان به API آنلاین وصل شوید: `GetIdentity`، `GetFinancial`، `GetRisk`، `ListCustomers`، `CreateCustomer`، `UpdateCustomer`، `DeleteCustomer`.
+
+- مدل‌های داخلی را ثابت نگه دارید تا `engine` و `handlers` تغییر نکنند.
+- اگر RBCI آنلاین write API دارد، create/update/delete به همان سرویس push شود.
+- اگر RBCI آنلاین فقط خواندنی است، create/update/delete باید `405` یا `501` بدهد و UI پیام فارسی روشن نشان دهد.
+- seedهای فعلی فقط fixture دمو هستند و پس از اتصال آنلاین نباید وارد مسیر production شوند.
 
 ## ایجنت Python
 
@@ -96,6 +112,7 @@
 
 - حالت «بررسی سریع»: `POST /api/match` مستقیم
 - حالت «دستیار هوشمند»: چت با agent
+- حالت «مدیریت مشتریان»: CRUD روی `/api/rbci/customers`
 - رندر: offers، eligible (تعهدات/سقف/مشروط)، ineligible (gap/advice/alternatives)، default_warning، notes_fa
 
 ## متغیرهای محیطی
@@ -103,6 +120,7 @@
 | متغیر | پیش‌فرض | توضیح |
 |-------|---------|--------|
 | `BACKEND_URL` | `http://localhost:8080` | آدرس بک‌اند |
+| `DATABASE_URL` | — | اتصال PostgreSQL برای endpoint محلی RBCI |
 | `OPENAI_BASE_URL` | — | endpoint سازگار OpenAI |
 | `OPENAI_API_KEY` | — | کلید API |
 | `LLM_MODEL` | — | نام مدل |
@@ -125,12 +143,9 @@ cd agent && pytest -q
 ## استقرار Docker
 
 ```bash
-docker build -t banking-assistant .
-docker run -d --name banking-assistant \
-  -p 9080:8080 -p 9501:8501 \
-  -e OPENAI_BASE_URL=... -e OPENAI_API_KEY=... -e LLM_MODEL=... \
-  -e USE_RESPONSES_API=false \
-  banking-assistant
+docker compose up -d --build
 ```
 
-entrypoint: backend Go + gateway (SPA React + agent).
+Compose شامل app و PostgreSQL است؛ gateway عمومی روی `http://localhost:18080` سرو می‌شود.
+
+</div>

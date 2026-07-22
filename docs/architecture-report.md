@@ -1,3 +1,5 @@
+<div dir="rtl" align="right">
+
 # گزارش معماری و روش تصمیم‌گیری — دستیار هوشمند بانکی
 
 ## ۱. روش استخراج قواعد از بخشنامه‌ها
@@ -33,11 +35,26 @@
 سیستم از سه لایه تشکیل شده:
 
 ### لایه ۱: بک‌اند Go
-- **Mock APIها:** شبیه‌سازی سامانه‌های هویتی، مالی و RBCI
+- **endpoint محلی RBCI:** contract هویتی، مالی و ریسک با PostgreSQL در Docker
 - **موتور قواعد (Rule Engine):** ارزیابی قطعی (deterministic) شرایط اهلیت — بدون LLM
 - **تحلیل شکاف:** برای هر شرط ناموفق، فاصله بین مقدار فعلی و مقدار لازم
 
 **دلیل انتخاب Go:** همزمانی بالا، سرعت پردازش، مصرف کم حافظه
+
+### لایه داده محلی RBCI
+- در استقرار Docker، PostgreSQL منبع حقیقت مشتریان است.
+- `GET/POST/PUT/DELETE /api/rbci/customers` برای مدیریت ورودی‌های محلی RBCI استفاده می‌شود.
+- مسیرهای تطبیق (`/api/identity`, `/api/financial`, `/api/rbci`, `/api/match`) از همین store می‌خوانند.
+- seedهای PDF فقط یک بار در volume خالی درج می‌شوند؛ حذف یا ویرایش آن‌ها پایدار می‌ماند.
+- هیچ sync دوطرفه با RBCI آنلاین در نسخه دمو وجود ندارد. هنگام اتصال RBCI آنلاین، adapter همین contract را پیاده‌سازی می‌کند.
+- این تصمیم عمدی است: UI، agent و rule engine فقط با contract محلی RBCI کار می‌کنند، پس تعویض PostgreSQL با RBCI آنلاین نباید منطق اهلیت یا API مصرفی UI را عوض کند.
+
+### مسیر اتصال به RBCI آنلاین
+1. در `backend/internal/data` یک adapter HTTP برای RBCI آنلاین جایگزین adapter PostgreSQL کنید.
+2. امضاهای فعلی `GetIdentity`، `GetFinancial`، `GetRisk`، `ListCustomers`، `CreateCustomer`، `UpdateCustomer` و `DeleteCustomer` را حفظ کنید.
+3. اگر RBCI آنلاین write API دارد، create/update/delete را به همان API push کنید. اگر read-only است، این مسیرها باید `405 Method Not Allowed` یا `501 Not Implemented` برگردانند.
+4. mapping فیلدهای RBCI آنلاین را به مدل‌های داخلی `IdentityProfile`، `FinancialProfile` و `RiskAssessment` محدود نگه دارید.
+5. تست‌های matching و سناریوهای PDF باید بدون تغییر rule engine پاس شوند؛ فقط تست adapter عوض می‌شود.
 
 ### لایه ۲: ایجنت Python (LangChain / LangGraph)
 - **۸ ابزار (Tool):** اتصال به هر سرویس بک‌اند
@@ -54,7 +71,7 @@
 - **RTL فارسی** و نمایش ساختاریافته: مجاز / غیرمجاز / شکاف / تعهدات / افر مشروط
 
 ```
-React SPA ──► FastAPI gateway ──► Go backend :8080
+React SPA ──► FastAPI gateway ──► Go backend :8080 ──► PostgreSQL local RBCI
                  │
                  └──► LLM (Chat Completions)
 ```
@@ -101,12 +118,9 @@ React SPA ──► FastAPI gateway ──► Go backend :8080
 ## ۶. استقرار
 
 ```bash
-docker build -t banking-assistant .
-docker run -d --name banking-assistant \
-  -p 9080:8080 -p 9501:8501 \
-  -e OPENAI_BASE_URL=... -e OPENAI_API_KEY=... -e LLM_MODEL=... \
-  -e USE_RESPONSES_API=false \
-  banking-assistant
+docker compose up -d --build
 ```
 
-entrypoint: بک‌اند Go + gateway (SPA React + agent).
+Compose دو سرویس می‌سازد: `app` برای بک‌اند Go + gateway و `postgres` برای endpoint محلی RBCI. سرویس عمومی روی `http://localhost:18080` است.
+
+</div>

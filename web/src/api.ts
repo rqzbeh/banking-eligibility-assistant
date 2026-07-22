@@ -1,4 +1,4 @@
-import type { ApiError, MatchResponse } from './types'
+import type { ApiError, CustomerRecord, MatchResponse } from './types'
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
@@ -50,6 +50,40 @@ export async function matchColdStart(input: {
     body: JSON.stringify(input),
   })
   if (r.ok) return { ok: true, data: (await r.json()) as MatchResponse }
+  return { ok: false, status: r.status, message: await parseError(r) }
+}
+
+export async function listCustomers(): Promise<
+  { ok: true; data: CustomerRecord[] } | { ok: false; status: number; message: string }
+> {
+  const r = await fetch('/api/rbci/customers')
+  if (r.ok) return { ok: true, data: (await r.json()) as CustomerRecord[] }
+  return { ok: false, status: r.status, message: await parseError(r) }
+}
+
+export async function saveCustomer(
+  record: CustomerRecord,
+  editingNationalId?: string,
+): Promise<{ ok: true; data: CustomerRecord } | { ok: false; status: number; message: string }> {
+  const r = await fetch(
+    editingNationalId
+      ? `/api/rbci/customers/${encodeURIComponent(editingNationalId)}`
+      : '/api/rbci/customers',
+    {
+      method: editingNationalId ? 'PUT' : 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(record),
+    },
+  )
+  if (r.ok) return { ok: true, data: (await r.json()) as CustomerRecord }
+  return { ok: false, status: r.status, message: await parseError(r) }
+}
+
+export async function deleteCustomer(
+  nationalId: string,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  const r = await fetch(`/api/rbci/customers/${encodeURIComponent(nationalId)}`, { method: 'DELETE' })
+  if (r.ok) return { ok: true }
   return { ok: false, status: r.status, message: await parseError(r) }
 }
 

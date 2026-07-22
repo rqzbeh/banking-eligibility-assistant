@@ -1,12 +1,12 @@
 {
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "name": "Banking Eligibility Assistant — Mock APIs",
-    "description": "مجموعه درخواست‌های Mock API و موتور تطبیق اهلیت (DATA-ICTChallenge).\nBase: http://localhost:8080 یا http://nl-main.z3df1lter.uk:9080",
+    "name": "Banking Eligibility Assistant — Local RBCI Endpoint",
+    "description": "مجموعه درخواست‌های endpoint محلی RBCI و موتور تطبیق اهلیت (DATA-ICTChallenge).\nBase: http://localhost:18080 یا http://nl-main.z3df1lter.uk:18080",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "baseUrl", "value": "http://localhost:18080" },
     { "key": "national_id", "value": "0012345678" },
     { "key": "customer_id", "value": "C001" }
   ],
@@ -100,6 +100,46 @@
               "raw": "{\n  \"name\": \"مینا نوری\",\n  \"age\": 40,\n  \"gender\": \"female\",\n  \"occupation\": \"housewife\",\n  \"employment_type\": \"none\",\n  \"approx_income\": 5000000,\n  \"visit_purpose\": \"وام\"\n}"
             },
             "url": "{{baseUrl}}/api/rbci/cold-start"
+          }
+        },
+        {
+          "name": "GET Local RBCI customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/rbci/customers"
+          }
+        },
+        {
+          "name": "POST Local RBCI customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity\": {\n    \"customer_id\": \"C006\",\n    \"national_id\": \"1234567890\",\n    \"name\": \"مشتری تست\",\n    \"age\": 34,\n    \"gender\": \"male\",\n    \"occupation\": \"employee\",\n    \"employment_type\": \"private\",\n    \"customer_type\": \"real\",\n    \"account_open_date\": \"1404/01/01\",\n    \"is_existing\": true\n  },\n  \"financial\": {\n    \"customer_id\": \"C006\",\n    \"monthly_income\": 40000000,\n    \"account_turnover_3m\": 150000000,\n    \"account_turnover_12m\": 600000000,\n    \"total_deposits\": 0,\n    \"active_loans\": 0,\n    \"total_loan_amount\": 0,\n    \"installment_default\": 0,\n    \"spending_pattern\": \"moderate\",\n    \"payment_history\": \"good\",\n    \"has_guarantor\": false\n  },\n  \"risk\": {\n    \"customer_id\": \"C006\",\n    \"risk_level\": \"low\",\n    \"risk_score\": 20,\n    \"reason\": \"ورودی محلی RBCI\",\n    \"is_cold_start\": false\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/rbci/customers"
+          }
+        },
+        {
+          "name": "PUT Local RBCI customer",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity\": {\n    \"customer_id\": \"C006\",\n    \"national_id\": \"1234567890\",\n    \"name\": \"مشتری تست\",\n    \"age\": 34,\n    \"gender\": \"male\",\n    \"occupation\": \"employee\",\n    \"employment_type\": \"private\",\n    \"customer_type\": \"real\",\n    \"account_open_date\": \"1404/01/01\",\n    \"is_existing\": true\n  },\n  \"financial\": {\n    \"customer_id\": \"C006\",\n    \"monthly_income\": 55000000,\n    \"account_turnover_3m\": 200000000,\n    \"account_turnover_12m\": 800000000,\n    \"total_deposits\": 0,\n    \"active_loans\": 0,\n    \"total_loan_amount\": 0,\n    \"installment_default\": 0,\n    \"spending_pattern\": \"moderate\",\n    \"payment_history\": \"good\",\n    \"has_guarantor\": false\n  },\n  \"risk\": {\n    \"customer_id\": \"C006\",\n    \"risk_level\": \"low\",\n    \"risk_score\": 10,\n    \"reason\": \"ویرایش محلی RBCI\",\n    \"is_cold_start\": false\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/rbci/customers/1234567890"
+          }
+        },
+        {
+          "name": "DELETE Local RBCI customer",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/rbci/customers/1234567890"
           }
         }
       ]

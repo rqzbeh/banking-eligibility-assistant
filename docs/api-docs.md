@@ -1,3 +1,5 @@
+<div dir="rtl" align="right">
+
 # مستندات API — دستیار هوشمند بانکی
 
 آدرس پایه: `http://localhost:8080`
@@ -9,8 +11,10 @@
 ### `GET /api/health`
 **پاسخ:**
 ```json
-{"status": "ok"}
+{"status": "ok", "service": "banking-assistant-backend", "customer_store": "local-rbci"}
 ```
+
+`customer_store` همیشه `local-rbci` است. PostgreSQL فقط persistence داخلی همین endpoint محلی است.
 
 ---
 
@@ -102,6 +106,72 @@
 **مقادیر مجاز occupation:** `employee`, `self_employed`, `housewife`, `retired`, `unemployed`, `manager`, `student`
 
 **مقادیر مجاز employment_type:** `government`, `private`, `freelance`, `none`
+
+---
+
+## endpoint محلی RBCI برای داده مشتری
+
+این contract جای RBCI آنلاین را در محیط دمو می‌گیرد. در Docker، PostgreSQL adapter محلی همین endpoint است و موتور تطبیق هم همین داده‌ها را می‌خواند.
+
+برای اتصال به RBCI آنلاین، همین pathها را برای UI نگه دارید و فقط adapter پشت آن‌ها را عوض کنید. اگر RBCI آنلاین عملیات write داشته باشد، `POST/PUT/DELETE` باید به RBCI push شود؛ اگر read-only باشد، همین مسیرها باید خطای روشن `405` یا `501` برگردانند.
+
+### `GET /api/rbci/customers`
+
+فهرست رکوردهای هویت، مالی و ریسک.
+
+### `POST /api/rbci/customers`
+
+افزودن مشتری جدید به endpoint محلی RBCI.
+
+### `GET /api/rbci/customers/{national_id}`
+
+خواندن یک رکورد با کد ملی ۱۰ رقمی.
+
+### `PUT /api/rbci/customers/{national_id}`
+
+ویرایش رکورد. `national_id` و `customer_id` رکورد موجود نباید عوض شوند.
+
+### `DELETE /api/rbci/customers/{national_id}`
+
+حذف رکورد از endpoint محلی RBCI. در PostgreSQL حذف پایدار است و seed با restart برنمی‌گردد.
+
+**بدنه create/update:**
+```json
+{
+  "identity": {
+    "customer_id": "C006",
+    "national_id": "1234567890",
+    "name": "مشتری تست",
+    "age": 34,
+    "gender": "male",
+    "occupation": "employee",
+    "employment_type": "private",
+    "customer_type": "real",
+    "account_open_date": "1404/01/01",
+    "is_existing": true
+  },
+  "financial": {
+    "customer_id": "C006",
+    "monthly_income": 40000000,
+    "account_turnover_3m": 150000000,
+    "account_turnover_12m": 600000000,
+    "total_deposits": 0,
+    "active_loans": 0,
+    "total_loan_amount": 0,
+    "installment_default": 0,
+    "spending_pattern": "moderate",
+    "payment_history": "good",
+    "has_guarantor": false
+  },
+  "risk": {
+    "customer_id": "C006",
+    "risk_level": "low",
+    "risk_score": 20,
+    "reason": "ورودی محلی RBCI",
+    "is_cold_start": false
+  }
+}
+```
 
 ---
 
@@ -228,5 +298,9 @@
 |----|-------|
 | 200 | موفق |
 | 400 | پارامتر الزامی ارسال نشده یا نامعتبر |
+| 409 | مشتری یا شناسه مشتری تکراری |
 | 404 | مشتری / منبع یافت نشد |
+| 503 | یکی از ورودی‌های محلی RBCI برای matching در دسترس نیست |
 | 500 | خطای داخلی سرور |
+
+</div>

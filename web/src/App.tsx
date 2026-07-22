@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { agentChat, healthCheck, matchColdStart, matchCustomer } from './api'
+import { agentChat, deleteCustomer, healthCheck, listCustomers, matchColdStart, matchCustomer, saveCustomer } from './api'
 import { MatchResults } from './components/MatchResults'
-import type { ChatMessage, MatchResponse, SampleCustomer } from './types'
+import type { ChatMessage, CustomerRecord, MatchResponse, SampleCustomer } from './types'
 
-type Mode = 'quick' | 'agent'
+type Mode = 'quick' | 'clients' | 'agent'
 
 const SAMPLES: SampleCustomer[] = [
   { nationalId: '0012345678', name: 'فاطمه احمدی', note: 'خانه‌دار — درآمد پایین' },
@@ -35,6 +35,43 @@ function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
 
+function emptyCustomer(): CustomerRecord {
+  return {
+    identity: {
+      customer_id: '',
+      national_id: '',
+      name: '',
+      age: 30,
+      gender: 'male',
+      occupation: 'employee',
+      employment_type: 'private',
+      customer_type: 'real',
+      account_open_date: '',
+      is_existing: true,
+    },
+    financial: {
+      customer_id: '',
+      monthly_income: 0,
+      account_turnover_3m: 0,
+      account_turnover_12m: 0,
+      total_deposits: 0,
+      active_loans: 0,
+      total_loan_amount: 0,
+      installment_default: 0,
+      spending_pattern: 'moderate',
+      payment_history: 'good',
+      has_guarantor: false,
+    },
+    risk: {
+      customer_id: '',
+      risk_level: 'medium',
+      risk_score: 50,
+      reason: '',
+      is_cold_start: false,
+    },
+  }
+}
+
 export default function App() {
   const [mode, setMode] = useState<Mode>('quick')
   const [backendOk, setBackendOk] = useState(false)
@@ -60,6 +97,10 @@ export default function App() {
   const [threadId, setThreadId] = useState<string | undefined>()
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [customers, setCustomers] = useState<CustomerRecord[]>([])
+  const [customerForm, setCustomerForm] = useState<CustomerRecord>(() => emptyCustomer())
+  const [editingNationalId, setEditingNationalId] = useState<string | undefined>()
+  const [customerLoading, setCustomerLoading] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -74,6 +115,10 @@ export default function App() {
       window.clearInterval(id)
     }
   }, [])
+
+  useEffect(() => {
+    if (mode === 'clients') void refreshCustomers()
+  }, [mode])
 
   const backendLabel = useMemo(
     () => (backendOk ? 'بک‌اند متصل' : 'بک‌اند قطع'),
@@ -183,6 +228,78 @@ export default function App() {
     setMode('quick')
   }
 
+  async function refreshCustomers() {
+    setCustomerLoading(true)
+    setError(null)
+    try {
+      const res = await listCustomers()
+      if (res.ok) setCustomers(res.data)
+      else setError(res.message)
+    } finally {
+      setCustomerLoading(false)
+    }
+  }
+
+  function editCustomer(c: CustomerRecord) {
+    setCustomerForm(JSON.parse(JSON.stringify(c)) as CustomerRecord)
+    setEditingNationalId(c.identity.national_id)
+  }
+
+  function updateCustomerForm(path: string, value: string | number | boolean) {
+    setCustomerForm((cur) => {
+      const next = JSON.parse(JSON.stringify(cur)) as CustomerRecord
+      const [section, field] = path.split('.') as [keyof CustomerRecord, string]
+      ;(next[section] as Record<string, unknown>)[field] = value
+      if (field === 'customer_id') {
+        next.financial.customer_id = String(value)
+        next.risk.customer_id = String(value)
+      }
+      return next
+    })
+  }
+
+  async function submitCustomer(e: FormEvent) {
+    e.preventDefault()
+    const record = {
+      ...customerForm,
+      financial: { ...customerForm.financial, customer_id: customerForm.identity.customer_id },
+      risk: { ...customerForm.risk, customer_id: customerForm.identity.customer_id },
+    }
+    setCustomerLoading(true)
+    setError(null)
+    try {
+      const res = await saveCustomer(record, editingNationalId)
+      if (res.ok) {
+        setCustomerForm(emptyCustomer())
+        setEditingNationalId(undefined)
+        await refreshCustomers()
+      } else {
+        setError(res.message)
+      }
+    } finally {
+      setCustomerLoading(false)
+    }
+  }
+
+  async function removeCustomer(nationalId: string) {
+    setCustomerLoading(true)
+    setError(null)
+    try {
+      const res = await deleteCustomer(nationalId)
+      if (res.ok) {
+        if (editingNationalId === nationalId) {
+          setCustomerForm(emptyCustomer())
+          setEditingNationalId(undefined)
+        }
+        await refreshCustomers()
+      } else {
+        setError(res.message)
+      }
+    } finally {
+      setCustomerLoading(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="hero">
@@ -219,6 +336,14 @@ export default function App() {
                 دستیار هوشمند
               </button>
             </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: '100%', marginTop: '0.55rem' }}
+              onClick={() => setMode('clients')}
+            >
+              مدیریت مشتریان
+            </button>
           </div>
 
           <div className="side-block">
@@ -414,6 +539,176 @@ export default function App() {
                 </div>
               )}
             </>
+          ) : mode === 'clients' ? (
+            <section className="panel">
+              <p className="panel-title">مدیریت ورودی‌های RBCI محلی</p>
+              {error && <div className="alert error">{error}</div>}
+              <form onSubmit={submitCustomer}>
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="cust-id">شناسه مشتری</label>
+                    <input
+                      id="cust-id"
+                      value={customerForm.identity.customer_id}
+                      onChange={(e) => updateCustomerForm('identity.customer_id', e.target.value)}
+                      placeholder="C006"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-nid">کد ملی</label>
+                    <input
+                      id="cust-nid"
+                      value={customerForm.identity.national_id}
+                      onChange={(e) => updateCustomerForm('identity.national_id', e.target.value)}
+                      placeholder="1234567890"
+                      disabled={!!editingNationalId}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-name">نام</label>
+                    <input
+                      id="cust-name"
+                      value={customerForm.identity.name}
+                      onChange={(e) => updateCustomerForm('identity.name', e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-age">سن</label>
+                    <input
+                      id="cust-age"
+                      type="number"
+                      min={15}
+                      max={100}
+                      value={customerForm.identity.age}
+                      onChange={(e) => updateCustomerForm('identity.age', Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-occ">شغل</label>
+                    <select
+                      id="cust-occ"
+                      value={customerForm.identity.occupation}
+                      onChange={(e) => updateCustomerForm('identity.occupation', e.target.value)}
+                    >
+                      {Object.entries(OCC_LABEL).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-income">درآمد ماهانه</label>
+                    <input
+                      id="cust-income"
+                      type="number"
+                      min={0}
+                      step={1_000_000}
+                      value={customerForm.financial.monthly_income}
+                      onChange={(e) => updateCustomerForm('financial.monthly_income', Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-turnover">گردش ۳ ماهه</label>
+                    <input
+                      id="cust-turnover"
+                      type="number"
+                      min={0}
+                      step={1_000_000}
+                      value={customerForm.financial.account_turnover_3m}
+                      onChange={(e) => updateCustomerForm('financial.account_turnover_3m', Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-defaults">اقساط معوق</label>
+                    <input
+                      id="cust-defaults"
+                      type="number"
+                      min={0}
+                      value={customerForm.financial.installment_default}
+                      onChange={(e) => updateCustomerForm('financial.installment_default', Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-risk">سطح ریسک RBCI</label>
+                    <select
+                      id="cust-risk"
+                      value={customerForm.risk.risk_level}
+                      onChange={(e) => updateCustomerForm('risk.risk_level', e.target.value)}
+                    >
+                      <option value="low">کم</option>
+                      <option value="medium">متوسط</option>
+                      <option value="high">بالا</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-score">امتیاز RBCI</label>
+                    <input
+                      id="cust-score"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={customerForm.risk.risk_score}
+                      onChange={(e) => updateCustomerForm('risk.risk_score', Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="cust-risk-reason">دلیل RBCI</label>
+                    <input
+                      id="cust-risk-reason"
+                      value={customerForm.risk.reason}
+                      onChange={(e) => updateCustomerForm('risk.reason', e.target.value)}
+                    />
+                  </div>
+                  <label className="check" style={{ alignSelf: 'end' }}>
+                    <input
+                      type="checkbox"
+                      checked={customerForm.financial.has_guarantor}
+                      onChange={(e) => updateCustomerForm('financial.has_guarantor', e.target.checked)}
+                    />
+                    ضامن دارد
+                  </label>
+                </div>
+                <div className="row-actions">
+                  <button className="btn btn-primary" type="submit" disabled={customerLoading}>
+                    {editingNationalId ? 'ذخیره ویرایش' : 'افزودن مشتری'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => {
+                      setCustomerForm(emptyCustomer())
+                      setEditingNationalId(undefined)
+                    }}
+                  >
+                    فرم جدید
+                  </button>
+                </div>
+              </form>
+
+              <div className="section-head">
+                <h3>مشتریان ثبت‌شده</h3>
+                <span className="count">{customers.length}</span>
+              </div>
+              <div className="sample-list">
+                {customers.map((c) => (
+                  <div className="sample-btn" key={c.identity.national_id}>
+                    <strong>{c.identity.name}</strong>
+                    <span>
+                      {c.identity.national_id} · {c.identity.customer_id} · RBCI: {c.risk.risk_level}
+                    </span>
+                    <div className="row-actions" style={{ marginTop: '0.5rem' }}>
+                      <button className="btn btn-secondary" type="button" onClick={() => editCustomer(c)}>
+                        ویرایش
+                      </button>
+                      <button className="btn btn-secondary" type="button" onClick={() => void removeCustomer(c.identity.national_id)}>
+                        حذف
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           ) : (
             <section className="panel">
               <div className="card info" style={{ marginBottom: '0.85rem' }}>
