@@ -2,8 +2,9 @@ openapi: 3.0.3
 info:
   title: Banking Eligibility Assistant API
   description: |
-    Mock APIs و موتور تطبیق اهلیت محصولات بانکی.
-    شامل سرویس‌های هویتی، مالی، RBCI، محصولات، بخشنامه‌ها و matching engine.
+    endpoint محلی RBCI و موتور تطبیق اهلیت محصولات بانکی.
+    در Docker، PostgreSQL adapter دمو برای داده مشتری/مالی/ریسک است و داده نمونه از همین endpoint seed می‌شود.
+    برای RBCI آنلاین، همین contract حفظ می‌شود و adapter پشت آن به API آنلاین وصل می‌شود.
   version: 1.0.0
   contact:
     name: DATA-ICTChallenge
@@ -11,7 +12,7 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local
-  - url: http://nl-main.z3df1lter.uk:9080
+  - url: http://nl-main.z3df1lter.uk:18080
     description: Production VPS
 
 paths:
@@ -30,6 +31,95 @@ paths:
                   status:
                     type: string
                     example: ok
+                  service:
+                    type: string
+                    example: banking-assistant-backend
+                  customer_store:
+                    type: string
+                    enum: [local-rbci]
+                    example: local-rbci
+
+  /api/rbci/customers:
+    get:
+      summary: فهرست مشتریان endpoint محلی RBCI
+      operationId: listLocalRbciCustomers
+      responses:
+        '200':
+          description: لیست رکوردهای مشتری
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerRecord'
+    post:
+      summary: افزودن مشتری در endpoint محلی RBCI
+      operationId: createLocalRbciCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRecord'
+      responses:
+        '201':
+          description: مشتری ساخته شد
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRecord'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/rbci/customers/{national_id}:
+    get:
+      summary: خواندن مشتری endpoint محلی RBCI
+      operationId: getLocalRbciCustomer
+      parameters:
+        - $ref: '#/components/parameters/NationalIDPath'
+      responses:
+        '200':
+          description: رکورد مشتری
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRecord'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: ویرایش مشتری endpoint محلی RBCI
+      operationId: updateLocalRbciCustomer
+      parameters:
+        - $ref: '#/components/parameters/NationalIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRecord'
+      responses:
+        '200':
+          description: رکورد ویرایش شد
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRecord'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: حذف مشتری endpoint محلی RBCI
+      operationId: deleteLocalRbciCustomer
+      parameters:
+        - $ref: '#/components/parameters/NationalIDPath'
+      responses:
+        '200':
+          description: حذف شد
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/identity:
     get:
@@ -227,6 +317,15 @@ paths:
           $ref: '#/components/responses/BadRequest'
 
 components:
+  parameters:
+    NationalIDPath:
+      name: national_id
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "0012345678"
+
   responses:
     BadRequest:
       description: پارامتر نامعتبر
@@ -236,6 +335,12 @@ components:
             $ref: '#/components/schemas/Error'
     NotFound:
       description: یافت نشد
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: رکورد تکراری
       content:
         application/json:
           schema:
@@ -287,6 +392,17 @@ components:
         risk_score: { type: number }
         reason: { type: string }
         is_cold_start: { type: boolean }
+
+    CustomerRecord:
+      type: object
+      required: [identity, financial, risk]
+      properties:
+        identity:
+          $ref: '#/components/schemas/IdentityProfile'
+        financial:
+          $ref: '#/components/schemas/FinancialProfile'
+        risk:
+          $ref: '#/components/schemas/RiskAssessment'
 
     ColdStartRequest:
       type: object

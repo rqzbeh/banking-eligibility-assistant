@@ -33,8 +33,8 @@ class TestIdentityTool:
         r = httpx.get(f"{BACKEND_URL}/api/identity")
         assert r.status_code == 400
 
-    def test_all_mock_customers(self):
-        """Verify all 5 mock customers are accessible."""
+    def test_all_seed_customers(self):
+        """Verify all 5 seed customers are accessible."""
         ids = ["0012345678", "0023456789", "0034567890", "0045678901", "0056789012"]
         for nid in ids:
             r = httpx.get(f"{BACKEND_URL}/api/identity", params={"national_id": nid})

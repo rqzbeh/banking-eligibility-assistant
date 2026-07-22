@@ -156,6 +156,7 @@ def agent_chat(req: ChatRequest):
 PROXY_PREFIXES = (
     "/api/health",
     "/api/identity",
+    "/api/customers",
     "/api/financial",
     "/api/rbci",
     "/api/products",

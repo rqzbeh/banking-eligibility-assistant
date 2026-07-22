@@ -1,3 +1,5 @@
+<div dir="rtl" align="right">
+
 # دستیار هوشمند بانکی — تعیین اهلیت و پیشنهاد محصولات
 
 ## توضیح پروژه
@@ -23,9 +25,15 @@
                               │  ├─ /api/identity        │
                               │  ├─ /api/financial       │
                               │  ├─ /api/rbci            │
+                              │  ├─ /api/rbci/customers  │
                               │  ├─ /api/products        │
                               │  ├─ /api/circulars       │
                               │  └─ /api/match           │
+                              └────────────┬─────────────┘
+                                           │ SQL
+                              ┌────────────▼─────────────┐
+                              │ PostgreSQL local RBCI    │
+                              │ source of truth          │
                               └──────────────────────────┘
 ```
 
@@ -33,7 +41,8 @@
 
 | جزء | زبان | توضیح |
 |-----|------|-------|
-| بک‌اند (Mock API + موتور قواعد) | Go | سرویس‌های هویتی، مالی، RBCI، محصولات، بخشنامه‌ها و موتور تطبیق |
+| بک‌اند (endpoint محلی RBCI + موتور قواعد) | Go | سرویس‌های هویتی، مالی، RBCI، محصولات، بخشنامه‌ها و موتور تطبیق |
+| پایگاه محلی RBCI | PostgreSQL | منبع حقیقت مشتری، مالی و ریسک در Docker؛ داده نمونه فقط seed اولیه است |
 | ایجنت هوشمند | Python (LangChain / LangGraph) | ارکستراسیون ابزارها، مدیریت مکالمه، حافظه جلسه |
 | رابط کاربری | React (TypeScript) | رابط فارسی RTL برای کارمند شعبه — سرو از gateway |
 | مدل زبانی | OpenAI-compatible | سازگار با Ollama، vLLM، OpenAI و سایر سرویس‌ها |
@@ -43,16 +52,10 @@
 ### روش ۱: Docker (توصیه‌شده)
 
 ```bash
-docker build -t banking-assistant .
-docker run -p 8080:8080 -p 8501:8501 \
-  -e OPENAI_BASE_URL=http://your-llm-server/v1 \
-  -e OPENAI_API_KEY=your-key \
-  -e LLM_MODEL=gpt-4o-mini \
-  -e USE_RESPONSES_API=false \
-  banking-assistant
+docker compose up -d --build
 
-# رابط کاربری: http://localhost:8501
-# API مستقیم:   http://localhost:8080
+# رابط کاربری و API از طریق gateway: http://localhost:18080
+# بک‌اند Go داخل compose روی :8080 اجرا می‌شود.
 ```
 
 ### روش ۲: اجرای مستقیم
@@ -61,6 +64,7 @@ docker run -p 8080:8080 -p 8501:8501 \
 
 ```bash
 # ۱. بک‌اند Go
+export DATABASE_URL=postgres://banking_assistant:banking_assistant_change_me@localhost:5432/banking_assistant?sslmode=disable
 cd backend && go run ./cmd/server
 # → :8080
 
@@ -94,6 +98,26 @@ export LLM_MODEL=llama3.1
 export OPENAI_API_KEY=not-needed
 export USE_RESPONSES_API=false
 ```
+
+## منبع داده مشتریان
+
+اپ فقط با contract محلی RBCI کار می‌کند. در Docker، PostgreSQL adapter دمو برای همین endpoint و منبع حقیقت محلی است:
+
+- افزودن/ویرایش/حذف در UI یا `/api/rbci/customers` مستقیماً همین منبع محلی را تغییر می‌دهد.
+- موتور تطبیق `POST /api/match` هویت، مالی و ریسک را از همین store می‌خواند.
+- داده‌های نمونه فقط برای seed اولیه volume هستند؛ اگر رکوردی حذف شود با restart دوباره ساخته نمی‌شود.
+- وقتی `DATABASE_URL` خالی باشد، همان endpoint محلی RBCI به صورت حافظه‌ای برای توسعه مستقیم اجرا می‌شود.
+
+### اتصال به RBCI آنلاین
+
+تصمیم طراحی این است که UI، agent و موتور تطبیق فقط contract داخلی RBCI را بشناسند، نه نوع storage را. امروز این contract با PostgreSQL محلی پیاده‌سازی شده تا داده‌های PDF و سناریوهای نمونه از همان مسیر واقعی `/api/rbci/customers` دیده و ویرایش شوند.
+
+برای اتصال به RBCI آنلاین، لایه `backend/internal/data` را از adapter PostgreSQL به adapter HTTP/RBCI تغییر دهید و امضاهای فعلی را نگه دارید: `GetIdentity`، `GetFinancial`، `GetRisk` و عملیات customer. در آن حالت:
+
+- `GET /api/rbci/customers` می‌تواند proxy/read-through از RBCI آنلاین باشد.
+- `POST/PUT/DELETE /api/rbci/customers/{national_id}` باید طبق policy بانک یا به RBCI آنلاین push شود یا اگر RBCI اجازه write نمی‌دهد، `405/501` برگرداند.
+- موتور `POST /api/match` نیاز به تغییر ندارد، چون همچنان از همین توابع داده می‌خواند.
+- health همچنان `customer_store: "local-rbci"` می‌ماند؛ جزئیات adapter داخلی نباید contract UI را عوض کند.
 
 ## سناریوهای نمونه
 
@@ -154,6 +178,11 @@ GET  /api/identity?national_id=0012345678
 GET  /api/financial?customer_id=C001
 GET  /api/rbci?customer_id=C001
 POST /api/rbci/cold-start
+GET  /api/rbci/customers
+POST /api/rbci/customers
+GET  /api/rbci/customers/{national_id}
+PUT  /api/rbci/customers/{national_id}
+DELETE /api/rbci/customers/{national_id}
 GET  /api/products
 GET  /api/circulars
 GET  /api/circulars/by-product?product_id=P001
@@ -170,7 +199,7 @@ POST /api/agent/chat   { "message": "...", "thread_id": "..." }
 ## ساختار پروژه
 
 ```
-├── backend/                 # بک‌اند Go — Mock API + موتور قواعد
+├── backend/                 # بک‌اند Go — endpoint محلی RBCI + موتور قواعد
 │   ├── cmd/server/
 │   └── internal/{models,data,engine,handlers}/
 ├── agent/                   # ایجنت + gateway FastAPI
@@ -221,3 +250,5 @@ POST /api/agent/chat   { "message": "...", "thread_id": "..." }
 ## مجوز
 
 این پروژه برای چالش ICTChallenge / DATA توسعه یافته است.
+
+</div>

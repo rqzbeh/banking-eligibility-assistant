@@ -1,0 +1,38 @@
+services:
+  postgres:
+    container_name: circular-conflict-postgres-1
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: banking_assistant
+      POSTGRES_USER: banking_assistant
+      POSTGRES_PASSWORD: banking_assistant_change_me
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking_assistant -d banking_assistant"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - banking_assistant_pg:/var/lib/postgresql/data
+
+  app:
+    container_name: circular-conflict-go-conflict-1
+    build: .
+    image: banking-eligibility-assistant:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    env_file:
+      - path: /opt/circular-conflict/.env
+        required: false
+    environment:
+      BACKEND_PORT: "8080"
+      BACKEND_URL: "http://localhost:8080"
+      DATABASE_URL: "postgres://banking_assistant:banking_assistant_change_me@postgres:5432/banking_assistant?sslmode=disable"
+      UI_PORT: "8501"
+      USE_RESPONSES_API: "false"
+    ports:
+      - "18080:8501"
+
+volumes:
+  banking_assistant_pg:

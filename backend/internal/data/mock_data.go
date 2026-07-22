@@ -1,21 +1,23 @@
-// Package data — داده‌های Mock سامانه‌های بانکی
+// Package data — داده‌های اولیه endpoint محلی RBCI و قواعد بانکی
 //
 // شامل:
-//   Identities  — ۵ مشتری نمونه (کد ملی ۱۰ رقمی)
-//   Financials  — پروفایل مالی متناظر
-//   Risks       — ارزیابی RBCI
-//   Products    — ۱۰ محصول P001..P010
-//   Circulars   — قوانین اهلیت استخراج‌شده از بخشنامه‌ها
+//
+//	Identities  — ۵ مشتری seed (کد ملی ۱۰ رقمی)
+//	Financials  — پروفایل مالی seed
+//	Risks       — ارزیابی RBCI seed
+//	Products    — ۱۰ محصول P001..P010
+//	Circulars   — قوانین اهلیت استخراج‌شده از بخشنامه‌ها
 //
 // سناریوهای PDF:
-//   C001/0012345678 خانه‌دار ۴۰ ساله (درآمد پایین، گردش کم)
-//   C002/0023456789 مدیر پردرآمد (واجد دسته‌چک و وام)
-//   C003/0034567890 کارمند با اقساط معوق
+//
+//	C001/0012345678 خانه‌دار ۴۰ ساله (درآمد پایین، گردش کم)
+//	C002/0023456789 مدیر پردرآمد (واجد دسته‌چک و وام)
+//	C003/0034567890 کارمند با اقساط معوق
 package data
 
 import "github.com/banking-assistant/backend/internal/models"
 
-// Mock identity profiles
+// Seed identity profiles
 var Identities = map[string]models.IdentityProfile{
 	"0012345678": {
 		CustomerID: "C001", NationalID: "0012345678",
@@ -49,7 +51,7 @@ var Identities = map[string]models.IdentityProfile{
 	},
 }
 
-// Mock financial profiles
+// Seed financial profiles
 var Financials = map[string]models.FinancialProfile{
 	"C001": {
 		CustomerID: "C001", MonthlyIncome: 8_000_000,
@@ -88,7 +90,7 @@ var Financials = map[string]models.FinancialProfile{
 	},
 }
 
-// Mock risk assessments
+// Seed risk assessments
 var Risks = map[string]models.RiskAssessment{
 	"C001": {CustomerID: "C001", RiskLevel: "medium", RiskScore: 55, Reason: "درآمد ثابت اندک، بدون سابقه وام"},
 	"C002": {CustomerID: "C002", RiskLevel: "low", RiskScore: 15, Reason: "درآمد بالا، سابقه پرداخت عالی، گردش حساب بالا"},
@@ -134,7 +136,7 @@ var Circulars = []models.CircularRule{
 			{Field: "monthly_income", Operator: "gte", Value: float64(10_000_000)},
 			{Field: "installment_default", Operator: "lte", Value: float64(1)},
 		},
-		Description: "Personal loan eligibility: age 18-65, low/medium risk, income >= 10M, max 1 default",
+		Description:   "Personal loan eligibility: age 18-65, low/medium risk, income >= 10M, max 1 default",
 		DescriptionFa: "شرایط اهلیت وام شخصی: سن ۱۸ تا ۶۵ سال، ریسک کم یا متوسط، درآمد حداقل ۱۰ میلیون، حداکثر ۱ قسط معوق",
 	},
 	// === وام مسکن P002 ===
@@ -150,7 +152,7 @@ var Circulars = []models.CircularRule{
 			{Field: "installment_default", Operator: "eq", Value: float64(0)},
 			{Field: "payment_history", Operator: "in", Value: []interface{}{"excellent", "good"}},
 		},
-		Description: "Housing loan: age 21-60, low risk only, income >= 30M, 12M turnover >= 500M, no defaults, good+ payment history",
+		Description:   "Housing loan: age 21-60, low risk only, income >= 30M, 12M turnover >= 500M, no defaults, good+ payment history",
 		DescriptionFa: "شرایط اهلیت وام مسکن: سن ۲۱ تا ۶۰، فقط ریسک کم، درآمد حداقل ۳۰ میلیون، گردش ۱۲ ماه حداقل ۵۰۰ میلیون، بدون قسط معوق، سابقه پرداخت خوب یا عالی",
 	},
 	// === دسته‌چک P003 ===
@@ -164,7 +166,7 @@ var Circulars = []models.CircularRule{
 			{Field: "installment_default", Operator: "eq", Value: float64(0)},
 			{Field: "occupation", Operator: "not_in", Value: []interface{}{"unemployed", "student"}},
 		},
-		Description: "Checkbook: age 18+, low/medium risk, 3M turnover >= 100M, no defaults, not unemployed/student",
+		Description:   "Checkbook: age 18+, low/medium risk, 3M turnover >= 100M, no defaults, not unemployed/student",
 		DescriptionFa: "شرایط اهلیت دسته‌چک: سن ۱۸+، ریسک کم یا متوسط، گردش ۳ ماه حداقل ۱۰۰ میلیون، بدون قسط معوق، شاغل",
 	},
 	// === کارت اعتباری P004 ===
@@ -178,7 +180,7 @@ var Circulars = []models.CircularRule{
 			{Field: "monthly_income", Operator: "gte", Value: float64(15_000_000)},
 			{Field: "installment_default", Operator: "lte", Value: float64(2)},
 		},
-		Description: "Credit card: age 18-70, low/medium risk, income >= 15M, max 2 defaults",
+		Description:   "Credit card: age 18-70, low/medium risk, income >= 15M, max 2 defaults",
 		DescriptionFa: "شرایط اهلیت کارت اعتباری: سن ۱۸ تا ۷۰، ریسک کم یا متوسط، درآمد حداقل ۱۵ میلیون، حداکثر ۲ قسط معوق",
 	},
 	// === سپرده کوتاه‌مدت P005 ===
@@ -188,7 +190,7 @@ var Circulars = []models.CircularRule{
 		Conditions: []models.RuleCondition{
 			{Field: "age", Operator: "gte", Value: float64(18)},
 		},
-		Description: "Short-term deposit: age 18+ only",
+		Description:   "Short-term deposit: age 18+ only",
 		DescriptionFa: "شرایط سپرده کوتاه‌مدت: فقط سن ۱۸ سال به بالا",
 	},
 	// === سپرده بلندمدت P006 ===
@@ -199,7 +201,7 @@ var Circulars = []models.CircularRule{
 			{Field: "age", Operator: "gte", Value: float64(18)},
 			{Field: "monthly_income", Operator: "gte", Value: float64(5_000_000)},
 		},
-		Description: "Long-term deposit: age 18+, income >= 5M",
+		Description:   "Long-term deposit: age 18+, income >= 5M",
 		DescriptionFa: "شرایط سپرده بلندمدت: سن ۱۸+، درآمد حداقل ۵ میلیون",
 	},
 	// === وام کسب‌وکار P007 ===
@@ -215,7 +217,7 @@ var Circulars = []models.CircularRule{
 			{Field: "account_turnover_3m", Operator: "gte", Value: float64(200_000_000)},
 			{Field: "installment_default", Operator: "eq", Value: float64(0)},
 		},
-		Description: "Business loan: age 21-60, self-employed/manager, low risk, income >= 50M, 3M turnover >= 200M, no defaults",
+		Description:   "Business loan: age 21-60, self-employed/manager, low risk, income >= 50M, 3M turnover >= 200M, no defaults",
 		DescriptionFa: "شرایط وام کسب‌وکار: سن ۲۱-۶۰، شغل آزاد یا مدیر، ریسک کم، درآمد ۵۰+ میلیون، گردش ۳ ماهه ۲۰۰+ میلیون، بدون قسط معوق",
 	},
 	// === بانکداری اینترنتی P008 ===
@@ -225,7 +227,7 @@ var Circulars = []models.CircularRule{
 		Conditions: []models.RuleCondition{
 			{Field: "age", Operator: "gte", Value: float64(15)},
 		},
-		Description: "Online banking: age 15+",
+		Description:   "Online banking: age 15+",
 		DescriptionFa: "بانکداری اینترنتی: سن ۱۵ سال به بالا",
 	},
 	// === پیامک بانکی P009 ===
@@ -235,7 +237,7 @@ var Circulars = []models.CircularRule{
 		Conditions: []models.RuleCondition{
 			{Field: "age", Operator: "gte", Value: float64(15)},
 		},
-		Description: "SMS banking: age 15+",
+		Description:   "SMS banking: age 15+",
 		DescriptionFa: "پیامک بانکی: سن ۱۵ سال به بالا",
 	},
 	// === وام ازدواج P010 ===
@@ -248,7 +250,7 @@ var Circulars = []models.CircularRule{
 			{Field: "risk_level", Operator: "in", Value: []interface{}{"low", "medium"}},
 			{Field: "installment_default", Operator: "eq", Value: float64(0)},
 		},
-		Description: "Marriage loan: age 18-40, low/medium risk, no defaults",
+		Description:   "Marriage loan: age 18-40, low/medium risk, no defaults",
 		DescriptionFa: "شرایط وام ازدواج: سن ۱۸ تا ۴۰، ریسک کم یا متوسط، بدون قسط معوق",
 	},
 }
