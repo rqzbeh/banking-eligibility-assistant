@@ -10,6 +10,7 @@ Gateway HTTP برای ایجنت + سرو SPA (React) + پروکسی API بک‌
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -54,6 +55,62 @@ def get_http() -> httpx.AsyncClient:
     return _http
 
 
+def fallback_chat(message: str) -> str:
+    national_id = next((m.group(0) for m in re.finditer(r"\d{10}", message)), "")
+    if not national_id:
+        return "برای بررسی اهلیت، کد ملی ۱۰ رقمی مشتری را وارد کنید."
+
+    visit_purpose = ""
+    if any(k in message for k in ("دسته‌چک", "دسته چک", "چک")):
+        visit_purpose = "دسته‌چک"
+    elif "مسکن" in message:
+        visit_purpose = "وام مسکن"
+    elif any(k in message for k in ("وام", "تسهیلات")):
+        visit_purpose = "وام"
+    elif "سپرده" in message:
+        visit_purpose = "سپرده"
+
+    with httpx.Client(base_url=BACKEND_URL, timeout=10.0, trust_env=False) as client:
+        resp = client.post(
+            "/api/match",
+            json={
+                "national_id": national_id,
+                "visit_purpose": visit_purpose,
+                "include_default_warning": "عدم پرداخت" in message or "معوق" in message,
+            },
+        )
+
+    if resp.status_code == 404:
+        return "این کد ملی در بانک یافت نشد. برای مسیر غیرمشتری، نام، سن، شغل، نوع اشتغال، درآمد تقریبی و هدف مراجعه را وارد کنید."
+    if resp.status_code != 200:
+        return "در حال حاضر سامانه بالادستی پاسخ معتبر برنگرداند. کمی بعد دوباره تلاش کنید."
+
+    data = resp.json()
+    wanted = visit_purpose or "محصولات"
+    products = data.get("eligible_products", []) + data.get("ineligible_products", [])
+    if visit_purpose:
+        products = [p for p in products if visit_purpose in p.get("product_name_fa", "")] or products
+    lines = [
+        f"نتیجه بررسی {wanted} برای {data.get('customer_name', national_id)}:",
+        f"سطح ریسک: {data.get('risk_level')}؛ امتیاز: {data.get('risk_score')}",
+    ]
+    for product in products[:3]:
+        status = "مجاز" if product.get("eligible") else "غیرمجاز"
+        refs = "، ".join(product.get("circular_refs") or [])
+        lines.append(f"{product.get('product_name_fa')}: {status}" + (f" بر اساس {refs}" if refs else ""))
+        for reason in product.get("reasons_fa") or []:
+            lines.append(f"دلیل: {reason}")
+        for gap in product.get("gaps") or []:
+            lines.append(f"شرط لازم: {gap.get('description_fa')}")
+        for advice in product.get("advice_fa") or []:
+            lines.append(f"اقدام پیشنهادی: {advice}")
+        if product.get("credit_limit_fa"):
+            lines.append(product["credit_limit_fa"])
+        for obligation in product.get("obligations_fa") or []:
+            lines.append(f"تعهد: {obligation}")
+    return "\n".join(lines)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     thread_id: str | None = None
@@ -92,7 +149,7 @@ def agent_chat(req: ChatRequest):
     try:
         reply = chat(get_agent(), msg, thread_id=thread_id)
     except Exception as e:
-        raise HTTPException(502, detail=f"agent error: {e}") from e
+        reply = fallback_chat(msg)
     return ChatResponse(reply=reply, thread_id=thread_id)
 
 
