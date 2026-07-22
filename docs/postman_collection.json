@@ -1,0 +1,222 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Banking Eligibility Assistant — Mock APIs",
+    "description": "مجموعه درخواست‌های Mock API و موتور تطبیق اهلیت (DATA-ICTChallenge).\nBase: http://localhost:8080 یا http://nl-main.z3df1lter.uk:9080",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "national_id", "value": "0012345678" },
+    { "key": "customer_id", "value": "C001" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Identity",
+      "item": [
+        {
+          "name": "GET Identity — housewife",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/identity?national_id=0012345678",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "identity"],
+              "query": [{ "key": "national_id", "value": "0012345678" }]
+            }
+          }
+        },
+        {
+          "name": "GET Identity — manager",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/identity?national_id=0023456789"
+          }
+        },
+        {
+          "name": "GET Identity — not found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/identity?national_id=0099999999"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Financial",
+      "item": [
+        {
+          "name": "GET Financial C001",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/financial?customer_id=C001"
+          }
+        },
+        {
+          "name": "GET Financial C002",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/financial?customer_id=C002"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBCI",
+      "item": [
+        {
+          "name": "GET Risk C001",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/rbci?customer_id=C001"
+          }
+        },
+        {
+          "name": "POST Cold-start risk",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"مینا نوری\",\n  \"age\": 40,\n  \"gender\": \"female\",\n  \"occupation\": \"housewife\",\n  \"employment_type\": \"none\",\n  \"approx_income\": 5000000,\n  \"visit_purpose\": \"وام\"\n}"
+            },
+            "url": "{{baseUrl}}/api/rbci/cold-start"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products & Circulars",
+      "item": [
+        {
+          "name": "GET Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/products"
+          }
+        },
+        {
+          "name": "GET Circulars",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/circulars"
+          }
+        },
+        {
+          "name": "GET Circulars by product P001",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/circulars/by-product?product_id=P001"
+          }
+        },
+        {
+          "name": "GET Circulars by product P003 checkbook",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/circulars/by-product?product_id=P003"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Match Engine",
+      "item": [
+        {
+          "name": "POST Match — housewife + default warning",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"0012345678\",\n  \"include_default_warning\": true,\n  \"visit_purpose\": \"وام شخصی\"\n}"
+            },
+            "url": "{{baseUrl}}/api/match"
+          }
+        },
+        {
+          "name": "POST Match — manager checkbook purpose",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"0023456789\",\n  \"visit_purpose\": \"دسته‌چک\",\n  \"include_default_warning\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/match"
+          }
+        },
+        {
+          "name": "POST Match — employee overdue",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"0034567890\",\n  \"include_default_warning\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/match"
+          }
+        },
+        {
+          "name": "POST Match — invalid NID",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"123\"\n}"
+            },
+            "url": "{{baseUrl}}/api/match"
+          }
+        },
+        {
+          "name": "POST Match — unknown customer 404",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"national_id\": \"0099999999\"\n}"
+            },
+            "url": "{{baseUrl}}/api/match"
+          }
+        },
+        {
+          "name": "POST Match cold-start — non-customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"مینا نوری\",\n  \"age\": 40,\n  \"gender\": \"female\",\n  \"occupation\": \"housewife\",\n  \"employment_type\": \"none\",\n  \"approx_income\": 5000000,\n  \"visit_purpose\": \"وام\",\n  \"include_default_warning\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/match/cold-start"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,407 @@
+openapi: 3.0.3
+info:
+  title: Banking Eligibility Assistant API
+  description: |
+    Mock APIs و موتور تطبیق اهلیت محصولات بانکی.
+    شامل سرویس‌های هویتی، مالی، RBCI، محصولات، بخشنامه‌ها و matching engine.
+  version: 1.0.0
+  contact:
+    name: DATA-ICTChallenge
+
+servers:
+  - url: http://localhost:8080
+    description: Local
+  - url: http://nl-main.z3df1lter.uk:9080
+    description: Production VPS
+
+paths:
+  /api/health:
+    get:
+      summary: بررسی سلامت سرویس
+      operationId: health
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/identity:
+    get:
+      summary: اطلاعات هویتی مشتری
+      operationId: getIdentity
+      parameters:
+        - name: national_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "0012345678"
+      responses:
+        '200':
+          description: پروفایل هویتی
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/financial:
+    get:
+      summary: اطلاعات مالی مشتری
+      operationId: getFinancial
+      parameters:
+        - name: customer_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "C001"
+      responses:
+        '200':
+          description: پروفایل مالی
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialProfile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/rbci:
+    get:
+      summary: ارزیابی ریسک RBCI
+      operationId: getRisk
+      parameters:
+        - name: customer_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "C001"
+      responses:
+        '200':
+          description: ارزیابی ریسک
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskAssessment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/rbci/cold-start:
+    post:
+      summary: ارزیابی ریسک اولیه (غیرمشتری)
+      operationId: coldStartRisk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ColdStartRequest'
+      responses:
+        '200':
+          description: ارزیابی ریسک اولیه
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskAssessment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/products:
+    get:
+      summary: فهرست محصولات بانکی
+      operationId: listProducts
+      responses:
+        '200':
+          description: لیست محصولات
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+
+  /api/circulars:
+    get:
+      summary: فهرست بخشنامه‌ها
+      operationId: listCirculars
+      responses:
+        '200':
+          description: لیست قواعد
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CircularRule'
+
+  /api/circulars/by-product:
+    get:
+      summary: بخشنامه‌های یک محصول
+      operationId: circularsByProduct
+      parameters:
+        - name: product_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "P001"
+      responses:
+        '200':
+          description: قواعد محصول
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CircularRule'
+
+  /api/match:
+    post:
+      summary: تطبیق مشتری موجود
+      description: |
+        پروفایل کامل مشتری را با تمام محصولات تطبیق می‌دهد.
+        خروجی شامل محصولات مجاز (با تعهدات و سقف اعتبار)،
+        محصولات غیرمجاز (با Gap Analysis و اقدامات عملی)،
+        و افرهای شخصی‌سازی‌شده است.
+      operationId: matchCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [national_id]
+              properties:
+                national_id:
+                  type: string
+                  example: "0012345678"
+                include_default_warning:
+                  type: boolean
+                visit_purpose:
+                  type: string
+                  description: هدف مراجعه مشتری
+                  example: دسته‌چک
+      responses:
+        '200':
+          description: نتیجه تطبیق
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/match/cold-start:
+    post:
+      summary: تطبیق غیرمشتری
+      operationId: matchNonCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ColdStartRequest'
+                - type: object
+                  properties:
+                    include_default_warning:
+                      type: boolean
+      responses:
+        '200':
+          description: نتیجه تطبیق اولیه
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  responses:
+    BadRequest:
+      description: پارامتر نامعتبر
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: یافت نشد
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        error_fa:
+          type: string
+
+    IdentityProfile:
+      type: object
+      properties:
+        customer_id: { type: string }
+        national_id: { type: string }
+        name: { type: string }
+        age: { type: integer }
+        gender: { type: string, enum: [male, female] }
+        occupation: { type: string }
+        employment_type: { type: string }
+        customer_type: { type: string }
+        account_open_date: { type: string }
+        is_existing: { type: boolean }
+
+    FinancialProfile:
+      type: object
+      properties:
+        customer_id: { type: string }
+        monthly_income: { type: number }
+        account_turnover_3m: { type: number }
+        account_turnover_12m: { type: number }
+        total_deposits: { type: number }
+        active_loans: { type: integer }
+        total_loan_amount: { type: number }
+        installment_default: { type: integer }
+        spending_pattern: { type: string }
+        payment_history: { type: string }
+        has_guarantor: { type: boolean }
+
+    RiskAssessment:
+      type: object
+      properties:
+        customer_id: { type: string }
+        risk_level: { type: string, enum: [low, medium, high] }
+        risk_score: { type: number }
+        reason: { type: string }
+        is_cold_start: { type: boolean }
+
+    ColdStartRequest:
+      type: object
+      required: [age, occupation]
+      properties:
+        name: { type: string }
+        age: { type: integer }
+        gender: { type: string }
+        occupation: { type: string }
+        employment_type: { type: string }
+        approx_income: { type: number }
+        visit_purpose: { type: string }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        name_fa: { type: string }
+        category: { type: string }
+        description: { type: string }
+        description_fa: { type: string }
+
+    CircularRule:
+      type: object
+      properties:
+        id: { type: string }
+        circular_ref: { type: string }
+        circular_ref_fa: { type: string }
+        product_id: { type: string }
+        conditions:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              operator: { type: string }
+              value: {}
+        description: { type: string }
+        description_fa: { type: string }
+
+    GapItem:
+      type: object
+      properties:
+        field: { type: string }
+        current_value: { type: string }
+        required_value: { type: string }
+        description: { type: string }
+        description_fa: { type: string }
+        advice_fa: { type: string }
+
+    ProductMatch:
+      type: object
+      properties:
+        product_id: { type: string }
+        product_name: { type: string }
+        product_name_fa: { type: string }
+        eligible: { type: boolean }
+        is_conditional:
+          type: boolean
+          description: افر مشروط برای غیرمشتری
+        conditions_fa:
+          type: array
+          items: { type: string }
+          description: شروط فعال‌سازی افر مشروط
+        reasons: { type: array, items: { type: string } }
+        reasons_fa: { type: array, items: { type: string } }
+        gaps: { type: array, items: { $ref: '#/components/schemas/GapItem' } }
+        advice_fa:
+          type: array
+          items: { type: string }
+          description: اقدامات عملی برای مجاز شدن
+        alternatives_fa:
+          type: array
+          items: { type: string }
+          description: مسیر جایگزین (ضامن، سپرده، گردش حساب)
+        obligations_fa: { type: array, items: { type: string } }
+        credit_limit_fa: { type: string }
+        circular_refs: { type: array, items: { type: string } }
+        score: { type: number }
+
+    MatchResponse:
+      type: object
+      properties:
+        customer_id: { type: string }
+        national_id: { type: string }
+        customer_name: { type: string }
+        is_existing: { type: boolean }
+        is_cold_start: { type: boolean }
+        risk_level: { type: string }
+        risk_score: { type: number }
+        eligible_products:
+          type: array
+          items: { $ref: '#/components/schemas/ProductMatch' }
+        ineligible_products:
+          type: array
+          items: { $ref: '#/components/schemas/ProductMatch' }
+        personalized_offers:
+          type: array
+          items: { $ref: '#/components/schemas/ProductMatch' }
+        notes_fa:
+          type: array
+          items: { type: string }
+          description: یادداشت‌های سیستمی (مثل افر مشروط)
+        risk_reason:
+          type: string
+        visit_purpose:
+          type: string
+        upstream_errors:
+          type: array
+          items: { type: string }
+        default_warning:
+          type: object
+          properties:
+            current_risk_level: { type: string }
+            potential_risk_level: { type: string }
+            consequences: { type: array, items: { type: string } }
+            consequences_fa: { type: array, items: { type: string } }
