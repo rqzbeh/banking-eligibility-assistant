@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from agent import chat, create_agent
+from agent import DEFAULT_LLM_MODEL, chat, create_agent
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080").rstrip("/")
 STATIC_DIR = Path(
@@ -204,7 +204,7 @@ def agent_health():
     return {
         "status": "ok",
         "service": "banking-assistant-agent",
-        "model": os.getenv("LLM_MODEL", ""),
+        "model": os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL") or DEFAULT_LLM_MODEL,
         "use_responses_api": os.getenv("USE_RESPONSES_API", "false"),
         "backend_url": BACKEND_URL,
     }

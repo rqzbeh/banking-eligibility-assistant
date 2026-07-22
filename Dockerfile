@@ -42,7 +42,7 @@ ENV BACKEND_URL=http://localhost:8080 \
     UI_PORT=8501 \
     STATIC_DIR=/app/web/dist \
     OPENAI_BASE_URL=https://api.openai.com/v1 \
-    LLM_MODEL=gpt-4o-mini \
+    LLM_MODEL=ag/gemini-3.6-flash-high \
     USE_RESPONSES_API=false \
     PYTHONPATH=/app/agent
 

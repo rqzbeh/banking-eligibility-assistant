@@ -35,6 +35,7 @@
 | `backend/internal/engine/` | موتور اهلیت، gap، افر، cold-start |
 | `backend/internal/handlers/` | لایه HTTP و اعتبارسنجی |
 | `agent/agent.py` | ایجنت LangChain با tools به بک‌اند |
+| `agent/rule_extractor.py` | استخراج LLM پیش‌نویس قواعد با quote validation و تأیید انسانی |
 | `agent/server.py` | Gateway: SPA + پروکسی API + چت agent |
 | `web/` | رابط وب RTL کارمند شعبه |
 | `docs/` | مستندات فارسی + OpenAPI + Postman + دمو |
@@ -123,7 +124,8 @@
 | `DATABASE_URL` | — | اتصال PostgreSQL برای endpoint محلی RBCI |
 | `OPENAI_BASE_URL` | — | endpoint سازگار OpenAI |
 | `OPENAI_API_KEY` | — | کلید API |
-| `LLM_MODEL` | — | نام مدل |
+| `LLM_MODEL` | `ag/gemini-3.6-flash-high` | مدل ثابت چت و استخراج قواعد |
+| `OPENAI_MODEL` | — | نام سازگار قدیمی؛ فقط اگر `LLM_MODEL` تنظیم نشده باشد |
 | `USE_RESPONSES_API` | `false` | فقط در صورت پشتیبانی واقعی gateway |
 | `STATIC_DIR` | — | مسیر `web/dist` برای SPA |
 

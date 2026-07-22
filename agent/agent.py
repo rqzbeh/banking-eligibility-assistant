@@ -25,6 +25,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
+DEFAULT_LLM_MODEL = "ag/gemini-3.6-flash-high"
 
 _client = httpx.Client(base_url=BACKEND_URL, timeout=10, trust_env=False)
 
@@ -245,10 +246,11 @@ def create_agent(model_name: str = None, base_url: str = None, api_key: str = No
         use_responses_api = os.getenv("USE_RESPONSES_API", "false").lower() in ("1", "true", "yes")
 
     llm_kwargs = dict(
-        model=model_name or os.getenv("LLM_MODEL", "gpt-4o-mini"),
+        model=model_name or os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL") or DEFAULT_LLM_MODEL,
         base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         api_key=api_key or os.getenv("OPENAI_API_KEY", "not-set"),
         temperature=0.1,
+        timeout=float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30")),
         use_responses_api=use_responses_api,
     )
     llm = ChatOpenAI(**llm_kwargs)

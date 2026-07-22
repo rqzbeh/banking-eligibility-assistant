@@ -31,6 +31,7 @@ services:
       BACKEND_URL: "http://localhost:8080"
       DATABASE_URL: "postgres://banking_assistant:banking_assistant_change_me@postgres:5432/banking_assistant?sslmode=disable"
       UI_PORT: "8501"
+      LLM_MODEL: "ag/gemini-3.6-flash-high"
       USE_RESPONSES_API: "false"
     ports:
       - "18080:8501"
