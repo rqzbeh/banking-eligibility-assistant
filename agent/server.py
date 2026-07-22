@@ -39,6 +39,16 @@ app.add_middleware(
 
 _agent = None
 _http: httpx.AsyncClient | None = None
+_fallback_threads: dict[str, dict] = {}
+OCCUPATION_FA = {
+    "employee": "کارمند",
+    "self_employed": "شغل آزاد",
+    "housewife": "خانه‌دار",
+    "manager": "مدیر",
+    "retired": "بازنشسته",
+    "unemployed": "بیکار",
+    "student": "دانشجو",
+}
 
 
 def get_agent():
@@ -55,10 +65,51 @@ def get_http() -> httpx.AsyncClient:
     return _http
 
 
-def fallback_chat(message: str) -> str:
+def _customer_label(rec: dict) -> str:
+    identity = rec.get("identity", {})
+    occupation = identity.get("occupation", "-")
+    occupation_fa = OCCUPATION_FA.get(occupation, occupation)
+    return (
+        f"{identity.get('name', 'بدون نام')}، کد ملی {identity.get('national_id', '-')}"
+        f"، شناسه {identity.get('customer_id', '-')}، شغل {occupation_fa} ({occupation})"
+    )
+
+def _find_customers(client: httpx.Client, query: str) -> list[dict]:
+    needle = re.sub(r"\s+", " ", query or "").strip().lower()
+    if not needle:
+        return []
+    resp = client.get("/api/rbci/customers")
+    if resp.status_code != 200:
+        return []
+    out = []
+    for rec in resp.json():
+        identity = rec.get("identity", {})
+        fields = [
+            identity.get("national_id", ""),
+            identity.get("customer_id", ""),
+            identity.get("name", ""),
+            identity.get("occupation", ""),
+            OCCUPATION_FA.get(identity.get("occupation", ""), ""),
+            identity.get("employment_type", ""),
+        ]
+        haystack = " ".join(fields).lower()
+        if needle in haystack:
+            out.append(rec)
+    return out
+
+def _extract_name_query(message: str) -> str:
+    text = re.sub(r"\d{10}", " ", message)
+    text = re.sub(r"\bC\d+\b", " ", text, flags=re.I)
+    for word in (
+        "بررسی", "اهلیت", "مشتری", "اسم", "نام", "شناسه", "کد", "ملی", "برای", "رو", "را", "کن", "بگو",
+        "دسته‌چک", "دسته چک", "چک", "وام", "تسهیلات", "مسکن", "سپرده", "بانکداری",
+    ):
+        text = text.replace(word, " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+def fallback_chat(message: str, thread_id: str = "default") -> str:
     national_id = next((m.group(0) for m in re.finditer(r"\d{10}", message)), "")
-    if not national_id:
-        return "برای بررسی اهلیت، کد ملی ۱۰ رقمی مشتری را وارد کنید."
+    customer_id = next((m.group(0).upper() for m in re.finditer(r"\bC\d+\b", message, re.I)), "")
 
     visit_purpose = ""
     if any(k in message for k in ("دسته‌چک", "دسته چک", "چک")):
@@ -71,6 +122,25 @@ def fallback_chat(message: str) -> str:
         visit_purpose = "سپرده"
 
     with httpx.Client(base_url=BACKEND_URL, timeout=10.0, trust_env=False) as client:
+        if not national_id:
+            query = customer_id or _extract_name_query(message)
+            matches = _find_customers(client, query)
+            if len(matches) == 1:
+                national_id = matches[0].get("identity", {}).get("national_id", "")
+                _fallback_threads.pop(thread_id, None)
+            elif len(matches) > 1:
+                _fallback_threads[thread_id] = {"matches": matches}
+                options = "\n".join(f"- {_customer_label(rec)}" for rec in matches[:5])
+                return "چند مشتری مشابه پیدا شد. لطفاً با کد ملی، شناسه مشتری یا شغل مشخص کنید کدام مورد مدنظر است:\n" + options
+            else:
+                remembered = _fallback_threads.get(thread_id, {}).get("matches", [])
+                matches = [rec for rec in remembered if query and query.lower() in _customer_label(rec).lower()]
+                if len(matches) == 1:
+                    national_id = matches[0].get("identity", {}).get("national_id", "")
+                    _fallback_threads.pop(thread_id, None)
+                else:
+                    return "برای بررسی اهلیت، کد ملی ۱۰ رقمی، شناسه مشتری یا نام دقیق مشتری را وارد کنید."
+
         resp = client.post(
             "/api/match",
             json={
@@ -149,7 +219,7 @@ def agent_chat(req: ChatRequest):
     try:
         reply = chat(get_agent(), msg, thread_id=thread_id)
     except Exception as e:
-        reply = fallback_chat(msg)
+        reply = fallback_chat(msg, thread_id=thread_id)
     return ChatResponse(reply=reply, thread_id=thread_id)
 
 
